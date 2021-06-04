@@ -124,7 +124,7 @@ mod functional_test;
 #[macro_use]
 mod macros;
 
-pub use crate::error::TantivyError;
+pub use crate::error::{AsyncIoError, TantivyError};
 pub use chrono;
 
 /// Tantivy result.
@@ -132,6 +132,9 @@ pub use chrono;
 /// Within tantivy, please avoid importing `Result` using `use crate::Result`
 /// and instead, refer to this as `crate::Result<T>`.
 pub type Result<T> = std::result::Result<T, TantivyError>;
+
+#[doc(hidden)]
+pub type AsyncIoResult<T> = std::result::Result<T, AsyncIoError>;
 
 /// Tantivy DateTime
 pub type DateTime = chrono::DateTime<chrono::Utc>;
@@ -179,6 +182,7 @@ pub use crate::postings::Postings;
 pub use crate::reader::LeasedItem;
 pub use crate::schema::{Document, Term};
 pub use common::HasLen;
+pub use common;
 pub use common::{f64_to_u64, i64_to_u64, u64_to_f64, u64_to_i64};
 use std::fmt;
 
