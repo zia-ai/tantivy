@@ -135,6 +135,7 @@ impl MultiFieldPostingsWriter {
         let mut term_offsets: Vec<(&[u8], Addr, UnorderedTermId)> =
             Vec::with_capacity(self.term_index.len());
         term_offsets.extend(self.term_index.iter());
+        debug!("sort-terms");
         term_offsets.sort_unstable_by_key(|&(k, _, _)| k);
 
         let mut unordered_term_mappings: HashMap<Field, FnvHashMap<UnorderedTermId, TermOrdinal>> =
@@ -142,6 +143,8 @@ impl MultiFieldPostingsWriter {
 
         let field_offsets = make_field_partition(&term_offsets);
 
+        debug!("serialize-fields");
+        term_offsets.sort_unstable_by_key(|&(k, _, _)| k);
         for (field, byte_offsets) in field_offsets {
             let field_entry = self.schema.get_field_entry(field);
 
