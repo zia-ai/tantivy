@@ -7,8 +7,8 @@ use crate::postings::{BlockSegmentPostings, SegmentPostings};
 use crate::schema::IndexRecordOption;
 use crate::schema::Term;
 use crate::termdict::TermDictionary;
-use common::BinarySerializable;
 use crate::AsyncIoResult;
+use common::BinarySerializable;
 
 /// The inverted index reader is in charge of accessing
 /// the inverted index associated to a specific field.

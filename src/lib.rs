@@ -181,8 +181,8 @@ pub use crate::indexer::IndexWriter;
 pub use crate::postings::Postings;
 pub use crate::reader::LeasedItem;
 pub use crate::schema::{Document, Term};
-pub use common::HasLen;
 pub use common;
+pub use common::HasLen;
 pub use common::{f64_to_u64, i64_to_u64, u64_to_f64, u64_to_i64};
 use std::fmt;
 

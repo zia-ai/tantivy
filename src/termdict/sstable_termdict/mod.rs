@@ -10,8 +10,8 @@ use self::sstable::value::{ValueReader, ValueWriter};
 use self::sstable::{BlockReader, SSTable};
 use std::iter::ExactSizeIterator;
 
-use common::VInt;
 use crate::postings::TermInfo;
+use common::VInt;
 
 pub use self::streamer::{TermStreamer, TermStreamerBuilder};
 pub use self::termdict::{TermDictionary, TermDictionaryBuilder};

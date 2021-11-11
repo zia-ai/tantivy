@@ -1,6 +1,5 @@
 use std::io;
 
-use common::BinarySerializable;
 use crate::directory::{FileSlice, OwnedBytes};
 use crate::postings::TermInfo;
 use crate::termdict::sstable_termdict::sstable::sstable_index::BlockAddr;
@@ -12,6 +11,7 @@ use crate::termdict::sstable_termdict::{
 };
 use crate::termdict::TermOrdinal;
 use crate::AsyncIoResult;
+use common::BinarySerializable;
 use once_cell::sync::Lazy;
 use tantivy_fst::automaton::AlwaysMatch;
 use tantivy_fst::Automaton;

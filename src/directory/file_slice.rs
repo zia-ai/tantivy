@@ -1,9 +1,9 @@
 use stable_deref_trait::StableDeref;
 
-use common::HasLen;
-use crate::{AsyncIoError, AsyncIoResult};
 use crate::directory::OwnedBytes;
+use crate::{AsyncIoError, AsyncIoResult};
 use async_trait::async_trait;
+use common::HasLen;
 use std::fmt;
 use std::ops::Range;
 use std::sync::{Arc, Weak};
@@ -219,7 +219,6 @@ impl FileHandle for OwnedBytes {
         self.read_bytes(range).map_err(AsyncIoError::from)
     }
 }
-
 
 #[cfg(test)]
 mod tests {

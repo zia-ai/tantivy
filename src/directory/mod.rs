@@ -28,10 +28,10 @@ pub use self::directory_lock::{Lock, INDEX_WRITER_LOCK, META_LOCK};
 pub(crate) use self::file_slice::{ArcBytes, WeakArcBytes};
 pub use self::file_slice::{FileHandle, FileSlice};
 pub use self::ram_directory::RamDirectory;
-pub use ownedbytes::OwnedBytes;
 pub use self::watch_event_router::{WatchCallback, WatchCallbackList, WatchHandle};
 pub use common::AntiCallToken;
 pub use common::TerminatingWrite;
+pub use ownedbytes::OwnedBytes;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
