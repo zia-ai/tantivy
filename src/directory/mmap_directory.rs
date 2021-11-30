@@ -294,17 +294,20 @@ impl MmapDirectory {
 /// Settings for the mmap directory.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MmapDirectorySettings {
-    /// Trigger a filesystem fsync for every call to `flush` of a file.
+    /// Whether a file system `sync_all` should be done for every call to `flush` of a file.
     ///
-    /// A flush is still triggered to release the process changes to the OS, but
-    /// the filesystem cache for the file will not be flushed to the disk.
-    pub sync_on_file_close: bool,
+    /// A flush releases the process changes to the OS, but the filesystem cache may not
+    /// be flushed to disk.
+    ///
+    /// This can be used to mitigate the performance impact of `sync_all` on OSes
+    /// where the performance of a sync is not good (ex: MacOS)
+    pub sync_on_flush: bool,
 }
 
 impl Default for MmapDirectorySettings {
     fn default() -> Self {
         MmapDirectorySettings {
-            sync_on_file_close: true,
+            sync_on_flush: true,
         }
     }
 }
@@ -326,41 +329,67 @@ impl Drop for ReleaseLockFile {
 
 /// This Write wraps a File, but has the specificity of
 /// call `sync_all` on flush.
-struct SafeFileWriter {
-    file: File,
-    sync_on_close: bool,
-}
+struct SafeFileWriter(File);
 
 impl SafeFileWriter {
-    fn new(file: File, sync_on_close: bool) -> SafeFileWriter {
-        SafeFileWriter {
-            file,
-            sync_on_close,
-        }
+    fn new(file: File) -> SafeFileWriter {
+        SafeFileWriter(file)
     }
 }
 
 impl Write for SafeFileWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.file.write(buf)
+        self.0.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.file.flush()?;
-        if self.sync_on_close {
-            self.file.sync_all()?;
-        }
-        Ok(())
+        self.0.flush()?;
+        self.0.sync_all()
     }
 }
 
 impl Seek for SafeFileWriter {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        self.file.seek(pos)
+        self.0.seek(pos)
     }
 }
 
 impl TerminatingWrite for SafeFileWriter {
+    fn terminate_ref(&mut self, _: AntiCallToken) -> io::Result<()> {
+        self.flush()
+    }
+}
+
+/// Wraps a File implementing `TerminatingWrite` without the `sync_all`
+/// call on flush.
+///
+/// This improves the performance on some OSes, but is not safe in
+/// a production environment.
+struct UnsafeFileWriter(File);
+
+impl UnsafeFileWriter {
+    fn new(file: File) -> UnsafeFileWriter {
+        UnsafeFileWriter(file)
+    }
+}
+
+impl Write for UnsafeFileWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl Seek for UnsafeFileWriter {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.0.seek(pos)
+    }
+}
+
+impl TerminatingWrite for UnsafeFileWriter {
     fn terminate_ref(&mut self, _: AntiCallToken) -> io::Result<()> {
         self.flush()
     }
@@ -475,8 +504,13 @@ impl Directory for MmapDirectory {
         self.sync_directory()
             .map_err(|io_err| OpenWriteError::wrap_io_error(io_err, path.to_path_buf()))?;
 
-        let writer = SafeFileWriter::new(file, self.inner.settings.sync_on_file_close);
-        Ok(BufWriter::new(Box::new(writer)))
+        let writer: Box<dyn TerminatingWrite> = if self.inner.settings.sync_on_flush {
+            Box::new(SafeFileWriter::new(file))
+        } else {
+            Box::new(UnsafeFileWriter::new(file))
+        };
+
+        Ok(BufWriter::new(writer))
     }
 
     fn atomic_read(&self, path: &Path) -> Result<Vec<u8>, OpenReadError> {
