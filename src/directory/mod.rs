@@ -51,7 +51,7 @@ pub struct GarbageCollectionResult {
 }
 
 #[cfg(feature = "mmap")]
-pub use self::mmap_directory::MmapDirectory;
+pub use self::mmap_directory::{MmapDirectory, MmapDirectorySettings};
 
 pub use self::managed_directory::ManagedDirectory;
 

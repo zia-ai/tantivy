@@ -151,15 +151,21 @@ struct MmapDirectoryInner {
     mmap_cache: RwLock<MmapCache>,
     _temp_directory: Option<TempDir>,
     watcher: FileWatcher,
+    settings: MmapDirectorySettings,
 }
 
 impl MmapDirectoryInner {
-    fn new(root_path: PathBuf, temp_directory: Option<TempDir>) -> MmapDirectoryInner {
+    fn new(
+        root_path: PathBuf,
+        temp_directory: Option<TempDir>,
+        settings: MmapDirectorySettings,
+    ) -> MmapDirectoryInner {
         MmapDirectoryInner {
             mmap_cache: Default::default(),
             _temp_directory: temp_directory,
             watcher: FileWatcher::new(&root_path.join(*META_FILEPATH)),
             root_path,
+            settings,
         }
     }
 
@@ -175,8 +181,12 @@ impl fmt::Debug for MmapDirectory {
 }
 
 impl MmapDirectory {
-    fn new(root_path: PathBuf, temp_directory: Option<TempDir>) -> MmapDirectory {
-        let inner = MmapDirectoryInner::new(root_path, temp_directory);
+    fn new(
+        root_path: PathBuf,
+        temp_directory: Option<TempDir>,
+        settings: MmapDirectorySettings,
+    ) -> MmapDirectory {
+        let inner = MmapDirectoryInner::new(root_path, temp_directory, settings);
         MmapDirectory {
             inner: Arc::new(inner),
         }
@@ -191,6 +201,7 @@ impl MmapDirectory {
         Ok(MmapDirectory::new(
             tempdir.path().to_path_buf(),
             Some(tempdir),
+            MmapDirectorySettings::default(),
         ))
     }
 
@@ -199,6 +210,17 @@ impl MmapDirectory {
     /// Returns an error if the `directory_path` does not
     /// exist or if it is not a directory.
     pub fn open<P: AsRef<Path>>(directory_path: P) -> Result<MmapDirectory, OpenDirectoryError> {
+        Self::open_with_settings(directory_path, MmapDirectorySettings::default())
+    }
+
+    /// Opens a MmapDirectory in a directory with specified settings.
+    ///
+    /// Returns an error if the `directory_path` does not
+    /// exist or if it is not a directory.
+    pub fn open_with_settings<P: AsRef<Path>>(
+        directory_path: P,
+        settings: MmapDirectorySettings,
+    ) -> Result<MmapDirectory, OpenDirectoryError> {
         let directory_path: &Path = directory_path.as_ref();
         if !directory_path.exists() {
             Err(OpenDirectoryError::DoesNotExist(PathBuf::from(
@@ -209,7 +231,11 @@ impl MmapDirectory {
                 directory_path,
             )))
         } else {
-            Ok(MmapDirectory::new(PathBuf::from(directory_path), None))
+            Ok(MmapDirectory::new(
+                PathBuf::from(directory_path),
+                None,
+                settings,
+            ))
         }
     }
 
@@ -265,6 +291,24 @@ impl MmapDirectory {
     }
 }
 
+/// Settings for the mmap directory.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MmapDirectorySettings {
+    /// Trigger a filesystem fsync for every call to `flush` of a file.
+    ///
+    /// A flush is still triggered to release the process changes to the OS, but
+    /// the filesystem cache for the file will not be flushed to the disk.
+    pub sync_on_file_close: bool,
+}
+
+impl Default for MmapDirectorySettings {
+    fn default() -> Self {
+        MmapDirectorySettings {
+            sync_on_file_close: true,
+        }
+    }
+}
+
 /// We rely on fs2 for file locking. On Windows & MacOS this
 /// uses BSD locks (`flock`). The lock is actually released when
 /// the `File` object is dropped and its associated file descriptor
@@ -282,28 +326,37 @@ impl Drop for ReleaseLockFile {
 
 /// This Write wraps a File, but has the specificity of
 /// call `sync_all` on flush.
-struct SafeFileWriter(File);
+struct SafeFileWriter {
+    file: File,
+    sync_on_close: bool,
+}
 
 impl SafeFileWriter {
-    fn new(file: File) -> SafeFileWriter {
-        SafeFileWriter(file)
+    fn new(file: File, sync_on_close: bool) -> SafeFileWriter {
+        SafeFileWriter {
+            file,
+            sync_on_close,
+        }
     }
 }
 
 impl Write for SafeFileWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
+        self.file.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()?;
-        self.0.sync_all()
+        self.file.flush()?;
+        if self.sync_on_close {
+            self.file.sync_all()?;
+        }
+        Ok(())
     }
 }
 
 impl Seek for SafeFileWriter {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        self.0.seek(pos)
+        self.file.seek(pos)
     }
 }
 
@@ -417,12 +470,12 @@ impl Directory for MmapDirectory {
         file.flush()
             .map_err(|io_error| OpenWriteError::wrap_io_error(io_error, path.to_path_buf()))?;
 
-        // Apparetntly, on some filesystem syncing the parent
+        // Apparently, on some filesystem syncing the parent
         // directory is required.
         self.sync_directory()
             .map_err(|io_err| OpenWriteError::wrap_io_error(io_err, path.to_path_buf()))?;
 
-        let writer = SafeFileWriter::new(file);
+        let writer = SafeFileWriter::new(file, self.inner.settings.sync_on_file_close);
         Ok(BufWriter::new(Box::new(writer)))
     }
 
